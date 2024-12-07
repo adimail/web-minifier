@@ -3,7 +3,8 @@ use strict;
 use warnings;
 use JSON;
 use File::Basename;
-use File::Path qw(make_path);
+use File::Path  qw(make_path);
+use Time::HiRes qw(gettimeofday tv_interval);
 
 sub minify_js {
 	my ($code) = @_;
@@ -57,24 +58,69 @@ make_path($output_dir_css) unless -d $output_dir_css;
 
 my $param = shift;
 
+# Color codes for output
+my $RED   = "\033[31m";
+my $GREEN = "\033[32m";
+my $RESET = "\033[0m";
+
+sub print_size_diff {
+	my ( $original_size, $minified_size ) = @_;
+	my $diff = $minified_size - $original_size;
+
+	if ( $diff < 0 ) {
+		print $GREEN
+		  . "Size reduced by "
+		  . abs($diff)
+		  . " bytes"
+		  . $RESET . "\n\n";
+	}
+	else {
+		print $RED . "Size increased by $diff bytes" . $RESET . "\n\n";
+
+		# just in case haha
+	}
+}
+
+sub measure_time {
+	my ($code_ref) = @_;
+	my $start_time = [gettimeofday];
+	$code_ref->();
+	my $end_time = [gettimeofday];
+	my $elapsed  = tv_interval( $start_time, $end_time );
+	return $elapsed;
+}
+
 if ( defined $param ) {
 	if ( -f $param && $param =~ /\.js$/ ) {
 
 		my $input_file  = $param;
 		my $output_file = basename($input_file);
 
-		open my $in, '<', $input_file or die "Cannot open '$input_file': $!\n";
-		my $code = do { local $/; <$in> };
-		close $in;
+		my $time_taken = measure_time(
+			sub {
+				open my $in, '<', $input_file
+				  or die "Cannot open '$input_file': $!\n";
+				my $code = do { local $/; <$in> };
+				close $in;
 
-		my $minified_code = minify_js($code);
+				my $minified_code = minify_js($code);
 
-		open my $out, '>', $output_file
-		  or die "Cannot write to '$output_file': $!\n";
-		print $out $minified_code;
-		close $out;
+				open my $out, '>', $output_file
+				  or die "Cannot write to '$output_file': $!\n";
+				print $out $minified_code;
+				close $out;
 
-		print "Minified '$param' saved to '$output_file'\n";
+				print "Minified '$param' saved to '$output_file'\n";
+			}
+		);
+
+		print "Time taken: $time_taken seconds\n";
+
+		my $original_size = -s $input_file;
+		my $minified_size = -s $output_file;
+		print "Original file size: $original_size bytes\n";
+		print "Minified file size: $minified_size bytes\n";
+		print_size_diff( $original_size, $minified_size );
 
 	}
 	elsif ( -f $param && $param =~ /\.css$/ ) {
@@ -82,18 +128,31 @@ if ( defined $param ) {
 		my $input_file  = $param;
 		my $output_file = basename($input_file);
 
-		open my $in, '<', $input_file or die "Cannot open '$input_file': $!\n";
-		my $code = do { local $/; <$in> };
-		close $in;
+		my $time_taken = measure_time(
+			sub {
+				open my $in, '<', $input_file
+				  or die "Cannot open '$input_file': $!\n";
+				my $code = do { local $/; <$in> };
+				close $in;
 
-		my $minified_code = minify_css($code);
+				my $minified_code = minify_css($code);
 
-		open my $out, '>', $output_file
-		  or die "Cannot write to '$output_file': $!\n";
-		print $out $minified_code;
-		close $out;
+				open my $out, '>', $output_file
+				  or die "Cannot write to '$output_file': $!\n";
+				print $out $minified_code;
+				close $out;
 
-		print "Minified '$param' saved to '$output_file'\n";
+				print "Minified '$param' saved to '$output_file'\n";
+			}
+		);
+
+		print "Time taken: $time_taken seconds\n";
+
+		my $original_size = -s $input_file;
+		my $minified_size = -s $output_file;
+		print "Original file size: $original_size bytes\n";
+		print "Minified file size: $minified_size bytes\n";
+		print_size_diff( $original_size, $minified_size );
 
 	}
 	else {
@@ -110,19 +169,31 @@ else {
 			my $input_file  = "$input_dir_js/$file";
 			my $output_file = "$output_dir_js/$file";
 
-			open my $in, '<', $input_file
-			  or die "Cannot open '$input_file': $!\n";
-			my $code = do { local $/; <$in> };
-			close $in;
+			my $time_taken = measure_time(
+				sub {
+					open my $in, '<', $input_file
+					  or die "Cannot open '$input_file': $!\n";
+					my $code = do { local $/; <$in> };
+					close $in;
 
-			my $minified_code = minify_js($code);
+					my $minified_code = minify_js($code);
 
-			open my $out, '>', $output_file
-			  or die "Cannot write to '$output_file': $!\n";
-			print $out $minified_code;
-			close $out;
+					open my $out, '>', $output_file
+					  or die "Cannot write to '$output_file': $!\n";
+					print $out $minified_code;
+					close $out;
 
-			print "Minified '$file' saved to '$output_dir_js/$file'\n";
+					print "Minified '$file' saved to '$output_dir_js/$file'\n";
+				}
+			);
+
+			print "Time taken: $time_taken seconds\n";
+
+			my $original_size = -s $input_file;
+			my $minified_size = -s $output_file;
+			print "Original file size: $original_size bytes\n";
+			print "Minified file size: $minified_size bytes\n";
+			print_size_diff( $original_size, $minified_size );
 		}
 		closedir $dir;
 	}
@@ -138,19 +209,31 @@ else {
 			my $input_file  = "$input_dir_css/$file";
 			my $output_file = "$output_dir_css/$file";
 
-			open my $in, '<', $input_file
-			  or die "Cannot open '$input_file': $!\n";
-			my $code = do { local $/; <$in> };
-			close $in;
+			my $time_taken = measure_time(
+				sub {
+					open my $in, '<', $input_file
+					  or die "Cannot open '$input_file': $!\n";
+					my $code = do { local $/; <$in> };
+					close $in;
 
-			my $minified_code = minify_css($code);
+					my $minified_code = minify_css($code);
 
-			open my $out, '>', $output_file
-			  or die "Cannot write to '$output_file': $!\n";
-			print $out $minified_code;
-			close $out;
+					open my $out, '>', $output_file
+					  or die "Cannot write to '$output_file': $!\n";
+					print $out $minified_code;
+					close $out;
 
-			print "Minified '$file' saved to '$output_dir_css/$file'\n";
+					print "Minified '$file' saved to '$output_dir_css/$file'\n";
+				}
+			);
+
+			print "Time taken: $time_taken seconds\n";
+
+			my $original_size = -s $input_file;
+			my $minified_size = -s $output_file;
+			print "Original file size: $original_size bytes\n";
+			print "Minified file size: $minified_size bytes\n";
+			print_size_diff( $original_size, $minified_size );
 		}
 		closedir $dir;
 	}
