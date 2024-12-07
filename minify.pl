@@ -37,26 +37,9 @@ sub minify_css {
 	return $code;
 }
 
-my $config_file = 'config.json';
-open my $config_fh, '<', $config_file or die "Cannot open '$config_file': $!\n";
-my $config_content = do { local $/; <$config_fh> };
-close $config_fh;
-
-my $config = decode_json($config_content);
-
-my $input_dir_js = $config->{js}->{input}
-  || die "Input directory for JS not specified in config\n";
-my $output_dir_js = $config->{js}->{output}
-  || die "Output directory for JS not specified in config\n";
-my $input_dir_css = $config->{css}->{input}
-  || die "Input directory for CSS not specified in config\n";
-my $output_dir_css = $config->{css}->{output}
-  || die "Output directory for CSS not specified in config\n";
-
-make_path($output_dir_js)  unless -d $output_dir_js;
-make_path($output_dir_css) unless -d $output_dir_css;
-
-my $param = shift;
+my $old_size = 0;
+my $new_size = 0;
+my $time     = 0;
 
 # Color codes for output
 my $RED   = "\033[31m";
@@ -90,70 +73,66 @@ sub measure_time {
 	return $elapsed;
 }
 
+sub process_file {
+	my ( $input_file, $output_file, $minify_sub ) = @_;
+
+	my $time_taken = measure_time(
+		sub {
+			open my $in, '<', $input_file
+			  or die "Cannot open '$input_file': $!\n";
+			my $code = do { local $/; <$in> };
+			close $in;
+
+			my $minified_code = $minify_sub->($code);
+
+			open my $out, '>', $output_file
+			  or die "Cannot write to '$output_file': $!\n";
+			print $out $minified_code;
+			close $out;
+
+			print "Minified '$input_file' saved to '$output_file'\n";
+		}
+	);
+
+	my $original_size = -s $input_file;
+	my $minified_size = -s $output_file;
+	print "Time taken: $time_taken seconds\n";
+	print "Original file size: $original_size bytes\n";
+	print "Minified file size: $minified_size bytes\n";
+	print_size_diff( $original_size, $minified_size );
+
+	$old_size += $original_size;
+	$new_size += $minified_size;
+	$time     += $time_taken;
+}
+
+my $config_file = 'config.json';
+open my $config_fh, '<', $config_file or die "Cannot open '$config_file': $!\n";
+my $config_content = do { local $/; <$config_fh> };
+close $config_fh;
+
+my $config = decode_json($config_content);
+
+my $input_dir_js = $config->{js}->{input}
+  || die "Input directory for JS not specified in config\n";
+my $output_dir_js = $config->{js}->{output}
+  || die "Output directory for JS not specified in config\n";
+my $input_dir_css = $config->{css}->{input}
+  || die "Input directory for CSS not specified in config\n";
+my $output_dir_css = $config->{css}->{output}
+  || die "Output directory for CSS not specified in config\n";
+
+make_path($output_dir_js)  unless -d $output_dir_js;
+make_path($output_dir_css) unless -d $output_dir_css;
+
+my $param = shift;
+
 if ( defined $param ) {
 	if ( -f $param && $param =~ /\.js$/ ) {
-
-		my $input_file  = $param;
-		my $output_file = basename($input_file);
-
-		my $time_taken = measure_time(
-			sub {
-				open my $in, '<', $input_file
-				  or die "Cannot open '$input_file': $!\n";
-				my $code = do { local $/; <$in> };
-				close $in;
-
-				my $minified_code = minify_js($code);
-
-				open my $out, '>', $output_file
-				  or die "Cannot write to '$output_file': $!\n";
-				print $out $minified_code;
-				close $out;
-
-				print "Minified '$param' saved to '$output_file'\n";
-			}
-		);
-
-		print "Time taken: $time_taken seconds\n";
-
-		my $original_size = -s $input_file;
-		my $minified_size = -s $output_file;
-		print "Original file size: $original_size bytes\n";
-		print "Minified file size: $minified_size bytes\n";
-		print_size_diff( $original_size, $minified_size );
-
+		process_file( $param, basename($param), \&minify_js );
 	}
 	elsif ( -f $param && $param =~ /\.css$/ ) {
-
-		my $input_file  = $param;
-		my $output_file = basename($input_file);
-
-		my $time_taken = measure_time(
-			sub {
-				open my $in, '<', $input_file
-				  or die "Cannot open '$input_file': $!\n";
-				my $code = do { local $/; <$in> };
-				close $in;
-
-				my $minified_code = minify_css($code);
-
-				open my $out, '>', $output_file
-				  or die "Cannot write to '$output_file': $!\n";
-				print $out $minified_code;
-				close $out;
-
-				print "Minified '$param' saved to '$output_file'\n";
-			}
-		);
-
-		print "Time taken: $time_taken seconds\n";
-
-		my $original_size = -s $input_file;
-		my $minified_size = -s $output_file;
-		print "Original file size: $original_size bytes\n";
-		print "Minified file size: $minified_size bytes\n";
-		print_size_diff( $original_size, $minified_size );
-
+		process_file( $param, basename($param), \&minify_css );
 	}
 	else {
 		print
@@ -161,83 +140,37 @@ if ( defined $param ) {
 	}
 }
 else {
-	if ( -d $input_dir_js ) {
-		opendir my $dir, $input_dir_js
-		  or die "Cannot open directory '$input_dir_js': $!\n";
-		while ( my $file = readdir $dir ) {
-			next unless $file =~ /\.js$/;
-			my $input_file  = "$input_dir_js/$file";
-			my $output_file = "$output_dir_js/$file";
-
-			my $time_taken = measure_time(
-				sub {
-					open my $in, '<', $input_file
-					  or die "Cannot open '$input_file': $!\n";
-					my $code = do { local $/; <$in> };
-					close $in;
-
-					my $minified_code = minify_js($code);
-
-					open my $out, '>', $output_file
-					  or die "Cannot write to '$output_file': $!\n";
-					print $out $minified_code;
-					close $out;
-
-					print "Minified '$file' saved to '$output_dir_js/$file'\n";
-				}
-			);
-
-			print "Time taken: $time_taken seconds\n";
-
-			my $original_size = -s $input_file;
-			my $minified_size = -s $output_file;
-			print "Original file size: $original_size bytes\n";
-			print "Minified file size: $minified_size bytes\n";
-			print_size_diff( $original_size, $minified_size );
+	for my $dir (
+		[ $input_dir_js,  $output_dir_js,  \&minify_js,  '.js' ],
+		[ $input_dir_css, $output_dir_css, \&minify_css, '.css' ]
+	  )
+	{
+		my ( $input_dir, $output_dir, $minify_sub, $ext ) = @$dir;
+		if ( -d $input_dir ) {
+			opendir my $dh, $input_dir
+			  or die "Cannot open directory '$input_dir': $!\n";
+			while ( my $file = readdir $dh ) {
+				next unless $file =~ /\Q$ext\E$/;
+				process_file( "$input_dir/$file", "$output_dir/$file",
+					$minify_sub );
+			}
+			closedir $dh;
 		}
-		closedir $dir;
-	}
-	else {
-		print "The input directory for JS does not exist.\n";
-	}
-
-	if ( -d $input_dir_css ) {
-		opendir my $dir, $input_dir_css
-		  or die "Cannot open directory '$input_dir_css': $!\n";
-		while ( my $file = readdir $dir ) {
-			next unless $file =~ /\.css$/;
-			my $input_file  = "$input_dir_css/$file";
-			my $output_file = "$output_dir_css/$file";
-
-			my $time_taken = measure_time(
-				sub {
-					open my $in, '<', $input_file
-					  or die "Cannot open '$input_file': $!\n";
-					my $code = do { local $/; <$in> };
-					close $in;
-
-					my $minified_code = minify_css($code);
-
-					open my $out, '>', $output_file
-					  or die "Cannot write to '$output_file': $!\n";
-					print $out $minified_code;
-					close $out;
-
-					print "Minified '$file' saved to '$output_dir_css/$file'\n";
-				}
-			);
-
-			print "Time taken: $time_taken seconds\n";
-
-			my $original_size = -s $input_file;
-			my $minified_size = -s $output_file;
-			print "Original file size: $original_size bytes\n";
-			print "Minified file size: $minified_size bytes\n";
-			print_size_diff( $original_size, $minified_size );
+		else {
+			print "The input directory for $ext files does not exist.\n";
 		}
-		closedir $dir;
-	}
-	else {
-		print "The input directory for CSS does not exist.\n";
 	}
 }
+
+print "-" x 50, "\n";
+print "Summary:\n";
+print "Total time taken: $time seconds\n";
+print "Total original size: $old_size bytes\n";
+print "Total minified size: $new_size bytes\n";
+my $total_diff = $old_size - $new_size;
+my $percentage_reduction =
+  $old_size > 0
+  ? sprintf( "%.2f", ( $total_diff / $old_size ) * 100 )
+  : 0;
+print "Total size reduced: $total_diff bytes ($percentage_reduction%)\n";
+print "-" x 50, "\n";
