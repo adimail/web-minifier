@@ -1,10 +1,16 @@
 {
   "js": {
     "input": "src/js",
-    "output": "min/js"
+    "output": "min/js",
+    "ignore": [
+      "three.js"
+    ]
   },
   "css": {
     "input": "src/css",
-    "output": "min/css"
+    "output": "min/css",
+    "ignore": [
+      "tailwind.css"
+    ]
   }
 }

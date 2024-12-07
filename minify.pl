@@ -27,12 +27,22 @@ sub minify_css {
 	my ($code) = @_;
 
 	# Remove comments (/* ... */)
-	$code =~ s|/\*.*?\*/||gs;
+	$code =~ s|/\*[^*]*\*+(?:[^/*][^*]*\*+)*/||gs;
 
-	# Remove unnecessary whitespace (newlines, tabs, extra spaces)
-	$code =~ s/\s+/ /g;    # Replace multiple whitespace with a single space
-	$code =~ s/\s*([{};:,])\s*/$1/g;   # Remove spaces around common CSS symbols
-	$code =~ s/^\s+|\s+$//g;           # Trim leading and trailing whitespace
+	# Remove unnecessary whitespace
+	$code =~ s/\s*([{}:;,])\s*/$1/g;    # Remove spaces around symbols
+	$code =~ s/;\}/}/g;                 # Remove trailing semicolons before '}'
+	$code =~ s/\s{2,}/ /g;              # Collapse multiple spaces into one
+	$code =~ s/^\s+|\s+$//g;            # Trim leading and trailing whitespace
+
+	# Optimize zero values
+	$code =~ s/(:|\s)0(\.0+)?(px|em|rem|%)?/$1"0"/g;
+
+	# Shorten hex color codes (e.g., #aabbcc -> #abc)
+	$code =~ s/#([0-9a-fA-F])\1([0-9a-fA-F])\2([0-9a-fA-F])\3/#$1$2$3/g;
+
+	# Remove redundant units in zero values (e.g., 0px -> 0)
+	$code =~ s/\b0(px|em|rem|%)\b/0/g;
 
 	return $code;
 }
@@ -141,16 +151,27 @@ if ( defined $param ) {
 }
 else {
 	for my $dir (
-		[ $input_dir_js,  $output_dir_js,  \&minify_js,  '.js' ],
-		[ $input_dir_css, $output_dir_css, \&minify_css, '.css' ]
+		[
+			$input_dir_js, $output_dir_js, \&minify_js,
+			'.js', $config->{js}->{ignore}
+		],
+		[
+			$input_dir_css, $output_dir_css,
+			\&minify_css,   '.css',
+			$config->{css}->{ignore}
+		]
 	  )
 	{
-		my ( $input_dir, $output_dir, $minify_sub, $ext ) = @$dir;
+		my ( $input_dir, $output_dir, $minify_sub, $ext, $ignore_list ) = @$dir;
+		my %ignore = map { $_ => 1 } @$ignore_list;
+
 		if ( -d $input_dir ) {
 			opendir my $dh, $input_dir
 			  or die "Cannot open directory '$input_dir': $!\n";
 			while ( my $file = readdir $dh ) {
-				next unless $file =~ /\Q$ext\E$/;
+				next
+				  unless $file =~ /\Q$ext\E$/;
+				next if $ignore{$file};
 				process_file( "$input_dir/$file", "$output_dir/$file",
 					$minify_sub );
 			}
