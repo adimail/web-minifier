@@ -1,0 +1,10 @@
+{
+  "js": {
+    "input": "src/js",
+    "output": "min/js"
+  },
+  "css": {
+    "input": "src/css",
+    "output": "min/css"
+  }
+}
